@@ -126,6 +126,23 @@ object WebGpuShaders {
             }
         }
 
+    private const val WHITE_FILTER_FILE = "7e7ad15c-6f96-4e2e-94cd-95334ce99001.wgsl"
+
+    suspend fun addWhiteReduction(context: Context, pref: Preference<List<WebGpuShader>>) =
+        withContext(Dispatchers.IO) {
+            val source = context.assets.open("selective_white.wgsl").bufferedReader().use { it.readText() }
+            ImageFilterWgsl(source, "Selective white reduction").validate()
+            withContext(NonCancellable) {
+                synchronized(lock) {
+                    if (pref.get().none { it.file == WHITE_FILTER_FILE }) {
+                        val file = File(dir(context).apply { mkdirs() }, WHITE_FILTER_FILE)
+                        file.writeText(source)
+                        pref.set(pref.get() + WebGpuShader(WHITE_FILTER_FILE, "Selective white reduction"))
+                    }
+                }
+            }
+        }
+
     fun remove(context: Context, pref: Preference<List<WebGpuShader>>, shader: WebGpuShader) {
         synchronized(lock) {
             pref.set(pref.get().filter { it.file != shader.file })
