@@ -47,6 +47,9 @@ jobs:
           cache-read-only: ${{ github.event_name == 'pull_request' }}
           cache-encryption-key: ${{ secrets.GRADLE_ENCRYPTION_KEY }}
 
+      - name: Test APK verification logic
+        run: python3 .github/scripts/verify_personal_apk.py --self-test
+
       - name: Run checks, unit tests and database migration checks
         id: unit_tests
         run: ./gradlew check spotlessCheck testDebugUnitTest verifySqlDelightMigration -Pdist=local --build-cache
@@ -90,9 +93,7 @@ jobs:
           apk=app/build/outputs/apk/release/app-arm64-v8a-release.apk
           apksigner="$(find "$ANDROID_HOME/build-tools" -name apksigner | sort -V | tail -1)"
           "$apksigner" verify --verbose --print-certs "$apk" | tee "$RUNNER_TEMP/apk-cert.txt"
-          test "$(awk -F ': ' '/^(Signer #1|V[0-9.]+ Signer):? certificate SHA-256 digest: / {print $2}' "$RUNNER_TEMP/apk-cert.txt" | sort -u)" = "$EXPECTED_SIGNER"
-          test "$(unzip -Z1 "$apk" | awk -F/ '/^lib\/[^/]+\/[^/]+\.so$/ {print $2}' | sort -u)" = arm64-v8a
-          test -f app/build/outputs/mapping/release/mapping.txt
+          python3 .github/scripts/verify_personal_apk.py "$apk" "$RUNNER_TEMP/apk-cert.txt" "$EXPECTED_SIGNER" app/build/outputs/mapping/release/mapping.txt
 
       - name: Delete signing material
         if: always()
