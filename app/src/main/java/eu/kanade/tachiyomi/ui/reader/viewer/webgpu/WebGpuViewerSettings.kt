@@ -397,7 +397,46 @@ private fun ShaderList(labelRes: StringResource, pref: Preference<List<WebGpuSha
     val filters by pref.collectAsState()
     val pick = rememberShaderPicker(pref, sampler = false)
 
+    val scope = rememberCoroutineScope()
+    var whiteFilterError by remember { mutableStateOf<String?>(null) }
+    var addingWhiteFilter by remember { mutableStateOf(false) }
+
     HeadingItem(labelRes)
+    if (labelRes == MR.strings.pref_image_filters &&
+        filters.none { it.file == WebGpuShaders.WHITE_FILTER_FILE }
+    ) {
+        TextButton(
+            enabled = !addingWhiteFilter,
+            onClick = {
+                addingWhiteFilter = true
+                scope.launch {
+                    try {
+                        WebGpuShaders.addWhiteReduction(context, pref)
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        whiteFilterError = e.message ?: e.toString()
+                    } finally {
+                        addingWhiteFilter = false
+                    }
+                }
+            },
+        ) {
+            Text(stringResource(MR.strings.pref_selective_white_reduction))
+        }
+    }
+    whiteFilterError?.let { message ->
+        AlertDialog(
+            onDismissRequest = { whiteFilterError = null },
+            confirmButton = {
+                TextButton(onClick = { whiteFilterError = null }) {
+                    Text(stringResource(MR.strings.action_ok))
+                }
+            },
+            title = { Text(stringResource(MR.strings.image_filter_invalid)) },
+            text = { Text(message) },
+        )
+    }
     ReorderableColumn(
         list = filters,
         onSettle = { from, to ->
