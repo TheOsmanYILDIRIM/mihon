@@ -20,7 +20,8 @@ class SelectiveWhiteTest {
 
     @Test
     fun `preset and parameter survive preference serialization`() {
-        val preset = WebGpuShader(WebGpuShaders.WHITE_FILTER_FILE, "Selective white reduction", mapOf("strength" to 0.2f))
+        val preset =
+            WebGpuShader(WebGpuShaders.WHITE_FILTER_FILE, "Selective white reduction", mapOf("strength" to 0.2f))
         WebGpuShaders.deserialize(WebGpuShaders.serialize(listOf(preset))) shouldBe listOf(preset)
     }
 }
