@@ -12,6 +12,8 @@ on:
   push:
     branches:
       - main
+      - selective-white-arm64
+  workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
@@ -44,15 +46,23 @@ jobs:
         with:
           cache-encryption-key: ${{ secrets.GRADLE_ENCRYPTION_KEY }}
 
-      - name: Check code format
-        run: ./gradlew spotlessCheck
-
-      - name: Run unit tests
+      - name: Run checks, unit tests and database migration checks
         id: unit_tests
-        run: ./gradlew testDebugUnitTest
+        run: ./gradlew check spotlessCheck testDebugUnitTest verifySqlDelightMigration -Pdist=local --build-cache
 
-      - name: Verify SQLDelight migrations
-        run: ./gradlew verifySqlDelightMigration
+      - name: Prepare persistent signing identity
+        id: signing
+        if: github.event_name != 'pull_request'
+        env:
+          MIHON_SIGNING_SEED: ${{ secrets.MIHON_SIGNING_SEED }}
+        run: |
+          if [ -z "$MIHON_SIGNING_SEED" ]; then
+            echo "::warning::Signing seed missing; this run will validate compilation but will not publish an installable APK."
+            exit 0
+          fi
+          python3 -m pip install --break-system-packages cryptography==45.0.7
+          python3 .github/scripts/personal_signing.py --self-test
+          python3 .github/scripts/personal_signing.py "$RUNNER_TEMP/mihon-personal.p12"
 
       - name: Upload test report
         if: steps.unit_tests.outcome == 'failure'
@@ -62,13 +72,37 @@ jobs:
           path: app/build/reports/tests/testDebugUnitTest
 
       - name: Build app
-        run: ./gradlew assembleRelease -Pdist=ci
+        env:
+          MIHON_GITHUB_RELEASE: ${{ steps.signing.outputs.ready }}
+          storeFile: ${{ runner.temp }}/mihon-personal.p12
+          storePassword: ${{ secrets.MIHON_SIGNING_SEED }}
+          keyAlias: mihon
+          keyPassword: ${{ secrets.MIHON_SIGNING_SEED }}
+        run: ./gradlew :app:assembleRelease -Pdist=local -Ppersonal-version-code="$((1000 + GITHUB_RUN_NUMBER))" --build-cache
+
+      - name: Verify release APK
+        if: steps.signing.outputs.ready == 'true'
+        env:
+          EXPECTED_SIGNER: ${{ steps.signing.outputs.fingerprint }}
+        run: |
+          apk=app/build/outputs/apk/release/app-arm64-v8a-release.apk
+          apksigner="$(find "$ANDROID_HOME/build-tools" -name apksigner | sort -V | tail -1)"
+          "$apksigner" verify --verbose --print-certs "$apk" | tee "$RUNNER_TEMP/apk-cert.txt"
+          grep -F "Signer #1 certificate SHA-256 digest: $EXPECTED_SIGNER" "$RUNNER_TEMP/apk-cert.txt"
+          test "$(unzip -Z1 "$apk" | awk -F/ '/^lib\/[^/]+\/[^/]+\.so$/ {print $2}' | sort -u)" = arm64-v8a
+          test -f app/build/outputs/mapping/release/mapping.txt
+
+      - name: Delete signing material
+        if: always()
+        run: rm -f "$RUNNER_TEMP/mihon-personal.p12"
 
       - name: Upload APK
+        if: steps.signing.outputs.ready == 'true'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: arm64-v8a-${{ github.sha }}
           path: app/build/outputs/apk/release/app-arm64-v8a-release.apk
+          if-no-files-found: error
 
       - name: Upload mapping
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

@@ -126,7 +126,7 @@ object WebGpuShaders {
             }
         }
 
-    private const val WHITE_FILTER_FILE = "7e7ad15c-6f96-4e2e-94cd-95334ce99001.wgsl"
+    internal const val WHITE_FILTER_FILE = "7e7ad15c-6f96-4e2e-94cd-95334ce99001.wgsl"
 
     suspend fun addWhiteReduction(context: Context, pref: Preference<List<WebGpuShader>>) =
         withContext(Dispatchers.IO) {
@@ -135,8 +135,6 @@ object WebGpuShaders {
             withContext(NonCancellable) {
                 synchronized(lock) {
                     if (pref.get().none { it.file == WHITE_FILTER_FILE }) {
-                        val file = File(dir(context).apply { mkdirs() }, WHITE_FILTER_FILE)
-                        file.writeText(source)
                         pref.set(pref.get() + WebGpuShader(WHITE_FILTER_FILE, "Selective white reduction"))
                     }
                 }
@@ -162,7 +160,7 @@ object WebGpuShaders {
                 val named = HashSet<String>()
                 for (pref in prefs) {
                     val shaders = pref.get()
-                    val kept = shaders.filter { it.file in present }
+                    val kept = shaders.filter { it.file == WHITE_FILTER_FILE || it.file in present }
                     if (kept.size != shaders.size) pref.set(kept)
                     kept.mapTo(named) { it.file }
                 }
@@ -172,9 +170,16 @@ object WebGpuShaders {
             }
         }
 
+    private fun source(context: Context, shader: WebGpuShader): String =
+        if (shader.file == WHITE_FILTER_FILE) {
+            context.assets.open("selective_white.wgsl").bufferedReader().use { it.readText() }
+        } else {
+            File(dir(context), shader.file).readText()
+        }
+
     /** Throws if the file is gone or no longer parses. */
     fun load(context: Context, shader: WebGpuShader): ImageFilterWgsl =
-        ImageFilterWgsl(File(dir(context), shader.file).readText(), shader.name).also { applyValues(it, shader) }
+        ImageFilterWgsl(source(context, shader), shader.name).also { applyValues(it, shader) }
 
     fun loadSampler(context: Context, shader: WebGpuShader): Sampler =
         Sampler(File(dir(context), shader.file).readText(), shader.name)
@@ -183,7 +188,7 @@ object WebGpuShaders {
     suspend fun params(context: Context, shader: WebGpuShader): List<ImageFilterWgsl.Param> =
         withContext(Dispatchers.IO) {
             try {
-                ImageFilterWgsl(File(dir(context), shader.file).readText(), shader.name).params
+                ImageFilterWgsl(source(context, shader), shader.name).params
             } catch (e: Exception) {
                 logcat(LogPriority.WARN, e) { shader.name }
                 emptyList()

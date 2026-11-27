@@ -402,7 +402,9 @@ private fun ShaderList(labelRes: StringResource, pref: Preference<List<WebGpuSha
     var addingWhiteFilter by remember { mutableStateOf(false) }
 
     HeadingItem(labelRes)
-    if (labelRes == MR.strings.pref_image_filters && filters.none { it.file == "7e7ad15c-6f96-4e2e-94cd-95334ce99001.wgsl" }) {
+    if (labelRes == MR.strings.pref_image_filters &&
+        filters.none { it.file == WebGpuShaders.WHITE_FILTER_FILE }
+    ) {
         TextButton(
             enabled = !addingWhiteFilter,
             onClick = {

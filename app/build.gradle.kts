@@ -37,7 +37,7 @@ android {
     defaultConfig {
         applicationId = "app.mihon"
 
-        versionCode = 39
+        versionCode = providers.gradleProperty("personal-version-code").map(String::toInt).getOrElse(39)
         versionName = "0.21.3"
 
         buildConfigField("boolean", "TELEMETRY_INCLUDED", "${Config.includeTelemetry}")
