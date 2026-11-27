@@ -86,10 +86,11 @@ jobs:
         env:
           EXPECTED_SIGNER: ${{ steps.signing.outputs.fingerprint }}
         run: |
+          set -o pipefail
           apk=app/build/outputs/apk/release/app-arm64-v8a-release.apk
           apksigner="$(find "$ANDROID_HOME/build-tools" -name apksigner | sort -V | tail -1)"
           "$apksigner" verify --verbose --print-certs "$apk" | tee "$RUNNER_TEMP/apk-cert.txt"
-          grep -F "Signer #1 certificate SHA-256 digest: $EXPECTED_SIGNER" "$RUNNER_TEMP/apk-cert.txt"
+          test "$(awk -F ': ' '/^(Signer #1|V[0-9.]+ Signer):? certificate SHA-256 digest: / {print $2}' "$RUNNER_TEMP/apk-cert.txt" | sort -u)" = "$EXPECTED_SIGNER"
           test "$(unzip -Z1 "$apk" | awk -F/ '/^lib\/[^/]+\/[^/]+\.so$/ {print $2}' | sort -u)" = arm64-v8a
           test -f app/build/outputs/mapping/release/mapping.txt
 
